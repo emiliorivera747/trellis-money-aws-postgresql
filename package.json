@@ -125,7 +125,7 @@
     "overrides": {
       "@types/react": "19.2.7",
       "@types/react-dom": "19.2.3",
-      "handlebars": ">=4.7.9",
+      "handlebars": ">=4.7.10",
       "@babel/core": ">=7.29.6",
       "axios": ">=1.15.1",
       "picomatch@^2": ">=2.3.2 <3",
