@@ -37,11 +37,14 @@ export async function GET(request: Request) {
 
   // ---- Upsert User ----
   const dbUser = await upsertUser(currentUser);
-  if (!dbUser)
-    return logErrorAndRedirect({
-      origin,
-      message: "Database user upsert failed",
-    });
+  if (!dbUser) {
+    /**
+     * The user is signed in to Supabase but their Postgres records failed to
+     * save. Send them to a page that can retry, not the generic auth error.
+     */
+    console.error(`Provisioning failed in auth callback for user ${currentUser.id}`);
+    return NextResponse.redirect(`${origin}/auth/setup-incomplete`);
+  }
   const subscriptions = dbUser.subscriptions;
 
   /**

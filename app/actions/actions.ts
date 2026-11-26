@@ -8,7 +8,8 @@ import { z } from "zod";
 
 //Utils
 import { createClient } from "@/utils/supabase/server";
-import { getUserByEmail, createUser } from "@/utils/drizzle/user/user";
+import { getUserByEmail } from "@/utils/drizzle/user/user";
+import { ensureProvisionedIfMissing } from "@/features/auth/utils/provisioning";
 
 //Schema
 import {
@@ -73,7 +74,8 @@ export async function login(
 
     // type-casting here for convenience
     // in practice, you should validate your inputs
-    const { error } = await supabase.auth.signInWithPassword(validatedFields);
+    const { data, error } =
+      await supabase.auth.signInWithPassword(validatedFields);
 
     if (error?.code === "email_not_confirmed") {
       const { error } = await supabase.auth.resend({
@@ -89,7 +91,9 @@ export async function login(
 
     if (error) return handleOtherErrors(error) as State;
 
-    // Add user to the database if they don't exist
+    // ----- Repair the user's Postgres records if an earlier sign-up failed -----
+    if (data.user) await ensureProvisionedIfMissing(data.user);
+
     return handleSuccess(formData);
   } catch (e) {
     // In case of a ZodError (caused by our validation) we're adding issues to our response
@@ -132,13 +136,12 @@ export async function signUp(
       };
     }
 
-    // Add the user to your own PostgreSQL database
-    if (data.user?.id) {
-      await createUser({
-        email: validatedFields.email,
-        userId: data.user.id,
-      });
-    }
+    /**
+     * Create the user, household and admin membership in Postgres. If this
+     * fails the Supabase account still exists, so don't fail the sign-up:
+     * login and every authenticated request retry provisioning.
+     */
+    if (data.user?.id) await ensureProvisionedIfMissing(data.user);
 
     return handleSuccess(formData);
   } catch (e) {
@@ -291,3 +294,28 @@ export const resendConfirmation = async (
     return handleOtherErrors(error) as State;
   }
 };
+
+/**
+ * Retries creating the signed-in user's Postgres records (user, household,
+ * admin membership). Used by the /auth/setup-incomplete page.
+ *
+ * Redirects to the dashboard on success, or to sign-in if the session is gone.
+ */
+export async function retryProvisioning(): Promise<State> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return redirect("/sign-in");
+
+  const provisioned = await ensureProvisionedIfMissing(user);
+  if (!provisioned)
+    return {
+      status: "error",
+      message:
+        "We still couldn't finish setting up your account. Wait a minute and try again.",
+    };
+
+  return redirect("/dashboard");
+}

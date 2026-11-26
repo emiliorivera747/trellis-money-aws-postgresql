@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 import getSubscriptionMinimalData from "@/utils/drizzle/stripe/getSubscriptionWithMinimalData";
 import { PROTECTED_PATHS } from "@/proxy";
+import { ensureProvisionedIfMissing } from "@/features/auth/utils/provisioning";
 
 // Util
 import { hasActiveSubscription } from "@/utils/api-helpers/stripe/subscriptions";
@@ -75,8 +76,20 @@ export async function updateSession(request: NextRequest) {
     // ---- Get subscription -----
     const subscription = await getSubscriptionMinimalData(user.id);
 
-    if (!hasActiveSubscription(subscription))
+    if (!hasActiveSubscription(subscription)) {
+      /**
+       * No subscription can also mean the user's Postgres records were never
+       * created. Repair them here so the subscriptions page works. This only
+       * runs on the no-subscription path, so paying users pay nothing extra.
+       */
+      const provisioned = await ensureProvisionedIfMissing(user);
+      if (!provisioned)
+        return NextResponse.redirect(
+          new URL("/auth/setup-incomplete", request.url)
+        );
+
       return NextResponse.redirect(new URL("/subscriptions", request.url));
+    }
   }
 
   // IMPORTANT: You *must* return the supabaseResponse object as it is. If you're
