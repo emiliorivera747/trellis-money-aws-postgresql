@@ -53,6 +53,40 @@ export const createHousehold = async (currentUser: SupabaseUserSyncData) => {
   const { id, email, user_metadata } = currentUser;
   const fullName = user_metadata.full_name?.trim();
 
+  try {
+    await insertHouseholdWithAdmin(id, email, fullName);
+  } catch (err) {
+    /**
+     * Concurrent callbacks for the same user (double-clicked magic link,
+     * multiple tabs) can both pass the doesHouseholdExist check. The unique
+     * index on HouseholdMember.user_id makes the loser's member insert fail,
+     * which rolls back its household insert too. The user already has a
+     * household from the winning request, so this is a success.
+     */
+    if (isUniqueViolation(err, HOUSEHOLD_MEMBER_USER_ID_KEY)) return;
+    throw err;
+  }
+};
+
+const HOUSEHOLD_MEMBER_USER_ID_KEY = "HouseholdMember_user_id_key";
+
+/**
+ * Returns true if the error (or the driver error Drizzle wraps in `cause`)
+ * is a Postgres unique violation (23505) on the given constraint.
+ */
+const isUniqueViolation = (err: unknown, constraint: string): boolean => {
+  const candidates = [err, (err as { cause?: unknown })?.cause];
+  return candidates.some((e) => {
+    const pgErr = e as { code?: string; constraint?: string } | undefined;
+    return pgErr?.code === "23505" && pgErr.constraint === constraint;
+  });
+};
+
+const insertHouseholdWithAdmin = async (
+  id: string,
+  email: string | undefined,
+  fullName: string | undefined
+) => {
   await db.transaction(async (tx) => {
     /**
      * Create Household
@@ -72,13 +106,11 @@ export const createHousehold = async (currentUser: SupabaseUserSyncData) => {
      */
     await tx.insert(householdMember).values({
       householdMemberId: crypto.randomUUID(),
-      fullName: user_metadata.full_name?.trim() || "Unknown",
+      fullName: fullName || "Unknown",
       role: "ADMIN",
       userId: id,
       householdId,
     });
-
-    return householdInsert[0];
   });
 };
 

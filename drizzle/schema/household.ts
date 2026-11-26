@@ -4,6 +4,7 @@ import {
   text,
   foreignKey,
   index,
+  uniqueIndex,
   pgEnum,
 } from "drizzle-orm/pg-core";
 
@@ -83,7 +84,10 @@ export const householdMember = pgTable(
       "btree",
       table.householdId.asc().nullsLast().op("text_ops")
     ),
-    index("HouseholdMember_user_id_idx").using(
+    // One membership per login user. NULL user_ids (members without a login)
+    // are distinct in Postgres, so any number of them are still allowed.
+    // Also guards against concurrent auth callbacks creating duplicate households.
+    uniqueIndex("HouseholdMember_user_id_key").using(
       "btree",
       table.userId.asc().nullsLast().op("text_ops")
     ),
