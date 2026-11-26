@@ -1,9 +1,9 @@
 # Information Security Policy
 **Organization:** Trellis Money  
-**Version:** 1.1  
+**Version:** 1.3  
 **Effective Date:** April 30, 2026  
-**Last Reviewed:** July 14, 2026  
-**Next Review Date:** July 14, 2027  
+**Last Reviewed:** July 16, 2026  
+**Next Review Date:** July 16, 2027  
 **Policy Owner:** Emilio Rivera  
 **Approved By:** Emilio Rivera, Founder & CEO  
 
@@ -14,6 +14,15 @@
 This policy establishes the information security requirements for Trellis Money to protect the confidentiality, integrity, and availability of company and customer data. It defines how we identify, mitigate, and monitor information security risks across our systems, infrastructure, and third-party integrations — including financial data accessed via Plaid.
 
 This policy is designed to satisfy the security obligations in the Plaid Developer Policy, including the maintenance of administrative, technical, and physical safeguards for End User Data, and applicable regulatory requirements such as the Safeguards Rule under the Gramm-Leach-Bliley Act (GLBA).
+
+### 1.1 Governance and Oversight
+
+Trellis Money's security program is a single-owner governance model, appropriate to its current size as an early-stage company:
+
+- **Policy ownership and approval authority:** The Policy Owner (Emilio Rivera, Founder & CEO) is accountable for this policy, has sole authority to approve exceptions (§17), and is the escalation point for all security incidents (§9.3).
+- **Review cadence:** This policy is formally reviewed at least annually, with the review date and a summary of changes logged in the Document History (§18). It is additionally revised ahead of material infrastructure changes, such as the planned Vercel-to-EC2 migration (§2).
+- **Operational oversight:** Security risk is managed on an ongoing basis through the access lifecycle process (§4.4), an annual risk assessment (§16), independent penetration testing (§16), and continuous dependency/vulnerability scanning with defined remediation SLAs (§7).
+- **Decision-making:** As a single-founder company, all security decisions, exceptions, and incident response actions are made directly by the Policy Owner; there is no delegated security committee at this stage. This will be revisited as the team grows.
 
 ---
 
@@ -235,7 +244,7 @@ An annual security risk assessment is conducted to:
 
 Risk assessment findings are documented and tracked to resolution.
 
-**Independent testing:** Trellis Money engages independent third parties to perform penetration testing of the production application at least annually, and additionally prior to major infrastructure changes (including the planned migration from Vercel to AWS EC2). Findings are triaged and remediated according to the patch SLAs in Section 7.
+**Independent testing:** Trellis Money is engaging an independent third party to perform its first penetration test of the production application, targeted for completion by **December 31, 2026**. Going forward, independent penetration testing will be performed at least annually, and additionally prior to major infrastructure changes (including the planned migration from Vercel to AWS EC2). Findings will be triaged and remediated according to the patch SLAs in Section 7.
 
 The next scheduled policy review is **July 14, 2027**.
 
@@ -253,6 +262,8 @@ Violations of this policy may result in disciplinary action, termination, or leg
 |---|---|---|---|
 | 1.0 | April 30, 2026 | Emilio Rivera | Initial policy created |
 | 1.1 | July 14, 2026 | Emilio Rivera | Aligned with Plaid Developer Policy and Security Questionnaire (v6): added change management, logging/monitoring/audit trails, endpoint & device security, personnel security (background checks), consumer privacy & data-sale prohibition, independent penetration testing, network segmentation, and Plaid breach-notification requirement (security@plaid.com); documented current Vercel hosting model and planned EC2 migration |
+| 1.2 | July 16, 2026 | Emilio Rivera | Added explicit Governance and Oversight section (§1.1) consolidating policy ownership, review cadence, operational oversight, and decision-making authority in response to Plaid's governance documentation request |
+| 1.3 | July 16, 2026 | Emilio Rivera | Corrected §16 to accurately reflect that independent penetration testing has not yet been performed; first independent penetration test is targeted for completion by December 31, 2026, with annual testing thereafter |
 
 ---
 
