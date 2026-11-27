@@ -4,8 +4,8 @@
   },
   "crons": [
     {
-      "path": "/api/cron/net-worth-snapshot",
-      "schedule": "0 0 * * *"
+      "path": "/api/cron/sync-auth-users",
+      "schedule": "0 3 * * *"
     }
   ]
 }
