@@ -1,6 +1,6 @@
 import { withAuth } from "@/lib/protected";
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/admin";
 import { getUserById, deleteUserById } from "@/utils/drizzle/user/user";
 
 const userDoesNotExist = () =>
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   return withAuth(request, async (_req, user) => {
     try {
-      const supabase = await createClient();
+      const supabaseAdmin = createAdminClient();
       const id = user.id;
 
       /**
@@ -62,7 +62,7 @@ export async function DELETE(request: NextRequest) {
       /**
        * Delete the user from Supabase
        */
-      const { error } = await supabase.auth.admin.deleteUser(id);
+      const { error } = await supabaseAdmin.auth.admin.deleteUser(id);
       if (error) return userNotDeleted();
 
       /**
