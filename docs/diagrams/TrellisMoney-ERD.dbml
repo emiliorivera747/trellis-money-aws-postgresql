@@ -1,0 +1,351 @@
+// Use DBML to define your database structure
+// Docs: https://dbml.dbdiagram.io/docs
+// Source: current Drizzle definitions in drizzle/schema/*.ts
+// Includes application Postgres tables; Supabase Auth tables are external.
+// timestamptz(3) = PostgreSQL timestamp(3) with time zone.
+// Profile.id uses integer + increment to represent PostgreSQL serial.
+// Nullable columns omit [not null]. Unique indexes retain their source names.
+// Index operator classes and NULLS LAST are not represented in this ERD.
+
+Project TrellisMoney {
+  database_type: 'PostgreSQL'
+  Note: 'Trellis Money application schema: 14 tables, 137 columns, 7 enums, and 14 foreign keys. Generated from local source definitions, not a live database inspection.'
+}
+
+// PostgreSQL enums
+
+Enum "AccountType" {
+  DEPOSITORY
+  CREDIT
+  LOAN
+  INVESTMENT
+  OTHER
+}
+
+Enum "AccountVerificationStatus" {
+  AUTOMATICALLY_VERIFIED
+  PENDING_MANUAL_VERIFICATION
+  DATABASE_INSIGHTS_PASS
+  FAILED
+}
+
+Enum "HouseholdRole" {
+  ADMIN
+  MEMBER
+  GUEST
+}
+
+Enum "RecurringInterval" {
+  DAY
+  WEEK
+  MONTH
+  YEAR
+}
+
+Enum "SubscriptionStatus" {
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+  PAUSED
+}
+
+Enum "UsageType" {
+  METERED
+  LICENSED
+}
+
+Enum "SnapshotSource" {
+  SYSTEM
+  BACKFILL
+  MANUAL
+}
+
+// Users and households
+
+Table "User" {
+  user_id text [primary key, not null, note: 'Supabase Auth user ID; stored as text in this database.']
+  customer_id text [unique, note: 'Stripe customer ID.']
+  email text [not null, unique]
+  full_name text
+  email_verified boolean [default: false]
+  phone_verified boolean [default: false]
+  phone text
+  created_at timestamptz(3) [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at timestamptz(3) [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    customer_id [unique, name: 'User_customer_id_key', type: btree]
+    email [unique, name: 'User_email_key', type: btree]
+  }
+
+  Note: 'Application users. The primary key is supplied by Supabase Auth; auth users live in a separate service.'
+}
+
+Table "Profile" {
+  id integer [primary key, not null, increment]
+  bio text
+  user_id text [not null]
+
+  indexes {
+    user_id [unique, name: 'Profile_user_id_key', type: btree]
+  }
+
+  Note: 'Optional profile for a user. The unique user_id index allows at most one profile per user.'
+}
+
+Table "Household" {
+  household_id text [primary key, not null]
+  household_name text [default: 'Our Household']
+  created_by_user_id text
+  created_at timestamptz(3) [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at timestamptz(3)
+
+  Note: 'A household groups members and their financial accounts. The creator link is optional.'
+}
+
+Table "HouseholdMember" {
+  household_member_id text [primary key, not null]
+  email text
+  full_name text [not null]
+  role HouseholdRole [not null, default: 'MEMBER']
+  household_id text [not null]
+  user_id text [note: 'Nullable; non-NULL values are unique.']
+  created_at timestamptz(3) [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at timestamptz(3)
+
+  indexes {
+    household_id [name: 'HouseholdMember_household_id_idx', type: btree]
+    user_id [unique, name: 'HouseholdMember_user_id_key', type: btree]
+    (household_id, user_id) [name: 'HouseholdMember_household_id_user_id_idx', type: btree]
+  }
+
+  Note: 'A login user can have at most one membership. A NULL user_id allows a member without a login.'
+}
+
+// Plaid connections and financial accounts
+
+Table "Item" {
+  item_id text [primary key, not null]
+  user_id text [not null]
+  institution_id text
+  institution_name text
+  access_token text [not null, note: 'Persistent Plaid access token; used by server-side integrations.']
+  webhook text
+  error_type text
+  error_code text
+  created_at timestamptz(3) [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at timestamptz(3)
+
+  indexes {
+    user_id [name: 'Item_user_id_idx', type: btree]
+    institution_id [name: 'Item_institution_id_idx', type: btree]
+  }
+
+  Note: 'A Plaid institution connection owned by a user. Accounts connect an Item to household members.'
+}
+
+Table "ItemStatus" {
+  item_id text [primary key, not null]
+  transactions_last_successful_update timestamptz(3)
+  transactions_last_failed timestamptz(3)
+  last_sync_cursor text
+  updated_at timestamptz(3)
+
+  Note: 'Optional transaction synchronization state for an Item; its primary key is also its foreign key.'
+}
+
+Table "Account" {
+  account_id text [primary key, not null]
+  available_balance numeric(28,8) [default: `0`]
+  current_balance numeric(28,8) [default: `0`]
+  limit_amount numeric(28,8) [default: `0`]
+  mask varchar(4)
+  account_name text [not null]
+  official_name text
+  type AccountType [not null]
+  subtype varchar(50)
+  expected_annual_return_rate numeric(6,4) [default: `0.06`]
+  holder_category varchar(20)
+  persistent_account_id text
+  verification_status AccountVerificationStatus
+  verification_name text
+  item_id text [not null]
+  household_member_id text [not null]
+  created_at timestamptz(3) [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at timestamptz(3) [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    item_id [name: 'Account_item_id_idx', type: btree]
+    household_member_id [name: 'Account_household_member_id_idx', type: btree]
+    (household_member_id, type) [name: 'Account_household_member_id_type_idx', type: btree]
+  }
+
+  Note: 'A financial account belongs to a Plaid Item and a household member.'
+}
+
+Table "Holding" {
+  holding_id text [primary key, not null]
+  account_id text
+  security_id text [not null]
+  institution_price numeric(20,8)
+  institution_price_as_of timestamptz(3)
+  institution_price_datetime timestamptz(3)
+  institution_value numeric(24,8)
+  cost_basis numeric(24,8)
+  quantity numeric(20,8)
+  iso_currency_code text
+  vested_quantity numeric(20,8)
+  vested_value numeric(24,8)
+  expected_annual_return_rate numeric(6,4) [default: `0.06`]
+  created_at timestamptz(3) [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at timestamptz(3)
+
+  indexes {
+    account_id [name: 'Holding_account_id_idx', type: btree]
+    security_id [name: 'Holding_security_id_idx', type: btree]
+  }
+
+  Note: 'An investment position references a Security and optionally an Account.'
+}
+
+Table "Security" {
+  security_id text [primary key, not null]
+  institution_id text
+  proxy_security_id text
+  security_name text
+  ticker_symbol text
+  is_cash_equivalent boolean
+  type text
+  close_price numeric(20,8)
+  close_price_as_of date
+  update_datetime timestamptz(3)
+  iso_currency_code text
+  sector text
+  industry text
+  created_at timestamptz(3) [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at timestamptz(3) [not null, default: `CURRENT_TIMESTAMP`]
+
+  Note: 'Security metadata supplied by Plaid. Provider identifiers are not database foreign keys.'
+}
+
+// Stripe billing catalog and subscriptions
+
+Table "Product" {
+  product_id text [primary key, not null]
+  product_name text [not null]
+  description text
+  active boolean [default: true]
+  created_at timestamptz(3) [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at timestamptz(3)
+
+  Note: 'Local Stripe product catalog.'
+}
+
+Table "Price" {
+  price_id text [primary key, not null]
+  currency varchar(3) [not null]
+  unit_amount bigint [not null, note: 'Amount in the minor unit of the currency, as supplied by Stripe.']
+  recurring_interval RecurringInterval
+  recurring_interval_count integer [default: 1]
+  recurring_usage_type UsageType [not null, default: 'LICENSED']
+  active boolean [default: false]
+  product_id text [not null]
+  created_at timestamptz(3) [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at timestamptz(3)
+
+  indexes {
+    product_id [name: 'Price_product_id_idx', type: btree]
+  }
+
+  Note: 'Local Stripe prices and recurring billing settings for a Product.'
+}
+
+Table "Subscription" {
+  subscription_id text [primary key, not null]
+  status SubscriptionStatus [not null, default: 'INCOMPLETE']
+  start_date timestamptz(3)
+  trial_start timestamptz(3)
+  trial_end timestamptz(3)
+  ended_at timestamptz(3)
+  cancel_at timestamptz(3)
+  canceled_at timestamptz(3)
+  cancel_at_period_end boolean [default: false]
+  stripe_customer_id text
+  user_id text [not null]
+  price_id text [not null]
+  created_at timestamptz(3) [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at timestamptz(3)
+
+  indexes {
+    user_id [name: 'Subscription_user_id_idx', type: btree]
+  }
+
+  Note: 'Local Stripe subscription state for a User and Price.'
+}
+
+// Household net worth history
+
+Table "NetWorthSnapshot" {
+  net_worth_snapshot_id varchar [primary key, not null]
+  household_id varchar [not null]
+  snapshot_date date [not null, note: 'Daily snapshot date, keyed together with household_id.']
+  snapshot_at timestamptz(3) [not null, default: `CURRENT_TIMESTAMP`]
+  total_assets numeric(28,8) [not null]
+  total_liabilities numeric(28,8) [not null]
+  net_worth numeric(28,8) [not null]
+  cash_assets numeric(28,8)
+  investment_assets numeric(28,8)
+  other_assets numeric(28,8)
+  credit_liabilities numeric(28,8)
+  loan_liabilities numeric(28,8)
+  other_liabilities numeric(28,8)
+  calculation_version varchar
+  source SnapshotSource [default: 'SYSTEM']
+  created_at timestamptz(3) [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    household_id [name: 'NetWorthSnapshot_household_id_idx', type: btree]
+    snapshot_date [name: 'NetWorthSnapshot_snapshot_date_idx', type: btree]
+    (household_id, snapshot_date) [unique, name: 'NetWorthSnapshot_household_id_snapshot_date_unique']
+  }
+
+  Note: 'Household totals and breakdowns. The household and snapshot date combination is unique.'
+}
+
+// Waitlist
+
+Table "Waitlist" {
+  id text [primary key, not null, default: `gen_random_uuid()`]
+  email text [not null, unique]
+  created_at timestamptz(3) [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    email [unique, name: 'Waitlist_email_key', type: btree]
+  }
+
+  Note: 'Standalone signup-interest email list; no foreign key to User.'
+}
+
+// Foreign keys and relationship cardinalities
+// > = many-to-one. - = one-to-one; the right side holds the foreign key.
+// Column nullability and unique indexes define optional participation.
+// References include the same ON DELETE and ON UPDATE actions as Drizzle.
+
+Ref Profile_user_id_fkey: "User".user_id - "Profile".user_id [delete: restrict, update: cascade]
+Ref Household_created_by_user_id_fkey: "Household".created_by_user_id > "User".user_id [delete: set null, update: cascade]
+Ref HouseholdMember_household_id_fkey: "HouseholdMember".household_id > "Household".household_id [delete: restrict, update: cascade]
+Ref HouseholdMember_user_id_fkey: "User".user_id - "HouseholdMember".user_id [delete: set null, update: cascade]
+Ref Item_user_id_fkey: "Item".user_id > "User".user_id [delete: restrict, update: cascade]
+Ref ItemStatus_item_id_fkey: "Item".item_id - "ItemStatus".item_id [delete: cascade, update: cascade]
+Ref Account_item_id_fkey: "Account".item_id > "Item".item_id [delete: cascade, update: cascade]
+Ref Account_household_member_id_fkey: "Account".household_member_id > "HouseholdMember".household_member_id [delete: restrict, update: cascade]
+Ref Holding_account_id_fkey: "Holding".account_id > "Account".account_id [delete: set null, update: cascade]
+Ref Holding_security_id_fkey: "Holding".security_id > "Security".security_id [delete: restrict, update: cascade]
+Ref Price_product_id_fkey: "Price".product_id > "Product".product_id [delete: restrict, update: cascade]
+Ref Subscription_user_id_fkey: "Subscription".user_id > "User".user_id [delete: cascade, update: cascade]
+Ref Subscription_price_id_fkey: "Subscription".price_id > "Price".price_id [delete: restrict, update: cascade]
+Ref NetWorthSnapshot_household_id_fkey: "NetWorthSnapshot".household_id > "Household".household_id [delete: restrict, update: cascade]
