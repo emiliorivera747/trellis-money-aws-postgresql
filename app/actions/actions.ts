@@ -8,6 +8,7 @@ import { z } from "zod";
 
 //Utils
 import { createClient } from "@/utils/supabase/server";
+import { findAuthUserByEmail } from "@/utils/supabase/admin";
 import { getUserByEmail } from "@/utils/drizzle/user/user";
 import { ensureProvisionedIfMissing } from "@/features/auth/utils/provisioning";
 
@@ -186,10 +187,6 @@ export const confirmReset = async (
       email,
     });
 
-    const { data, error } = await supabase.auth.admin.listUsers();
-
-    if (error) return handleOtherErrors(error) as State;
-
     // Generic message used in all cases to prevent email enumeration
     const genericSuccess: State = {
       status: "success",
@@ -197,12 +194,13 @@ export const confirmReset = async (
       user: { email },
     };
 
-    if (data) {
-      const user = data.users.find((user) => user.email === email);
-
-      // Return generic success regardless of whether user exists
-      if (!user || user.app_metadata.provider !== "email") return genericSuccess;
-    }
+    /**
+     * Only send resets to password accounts. Looks up the user directly
+     * instead of a bare listUsers(), which only returned the first 50 users.
+     */
+    const authUser = await findAuthUserByEmail(email);
+    if (!authUser || authUser.app_metadata.provider !== "email")
+      return genericSuccess;
 
     await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${process.env.NEXT_PUBLIC_DOMAIN}/reset-password`,
