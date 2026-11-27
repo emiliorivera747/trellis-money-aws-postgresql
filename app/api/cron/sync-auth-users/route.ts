@@ -13,6 +13,7 @@ import { getServerErrorMessage } from "@/utils/api-helpers/errors/getServerError
 
 /**
  * Cron job that checks Supabase Auth and Postgres are in sync.
+ * Scheduled in vercel.json at 10:00 UTC (2 AM PST / 3 AM PDT).
  *
  * Steps:
  * 1. Pages through every Supabase auth user.
